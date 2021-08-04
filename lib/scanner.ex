@@ -65,6 +65,8 @@ defmodule Lox.Scanner do
         }
 
   defguardp is_digit(char) when char in ?0..?9
+  defguardp is_alpha(char) when char in ?a..?z or char in ?A..?Z or char == ?_
+  defguardp is_alphanumeric(char) when is_alpha(char) or is_digit(char)
 
   @doc """
   Scans a string to return tokens and errors.
@@ -157,18 +159,33 @@ defmodule Lox.Scanner do
     tokenize(rest, add_token(scanner, :dot))
   end
 
-  # Numbers
+  # Strings
+  defp tokenize([?" | rest], scanner), do: tokenize_string(rest, [], scanner)
 
+  # Numbers
   defp tokenize([char | rest] = all, scanner) when is_digit(char) do
     tokenize_number(rest, all, 1, scanner)
   end
 
-  # Strings
-  defp tokenize([?" | rest], scanner), do: tokenize_string(rest, [], scanner)
+  # Identifiers
+  defp tokenize([char | rest] = all, scanner) when is_alpha(char) do
+    tokenize_identifier(rest, all, 1, scanner)
+  end
 
   # Unexpected characters
   defp tokenize([char | rest], scanner) do
     tokenize(rest, add_error(scanner, "Unexpected character: #{char}"))
+  end
+
+  # Keyword and Identifier tokenizer
+  defp tokenize_identifier([char | rest], all, count, scanner) when is_alphanumeric(char) do
+    tokenize_identifier(rest, all, count + 1, scanner)
+  end
+
+  defp tokenize_identifier(rest, all, count, scanner) do
+    list = Enum.slice(all, 0, count)
+
+    tokenize(rest, add_token(scanner, to_keyword_or_identifier(list)))
   end
 
   # Number tokenizer
@@ -222,4 +239,28 @@ defmodule Lox.Scanner do
     |> Enum.reverse()
     |> List.to_string()
   end
+
+  for keyword <- ~w(
+    and
+    class
+    else
+    false
+    for
+    fun
+    if
+    nil
+    or
+    print
+    return
+    super
+    this
+    true
+    var
+    while
+  )a do
+    chars = Atom.to_charlist(keyword)
+    defp to_keyword_or_identifier(unquote(chars)), do: unquote(keyword)
+  end
+
+  defp to_keyword_or_identifier(identifier), do: {:identifier, List.to_string(identifier)}
 end
