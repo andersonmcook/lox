@@ -30,9 +30,9 @@ defmodule Lox.Scanner do
            | :less_equal
 
   @typep literal ::
-           :identifier
+           {:identifier, String.t()}
+           | {:number, float}
            | {:string, String.t()}
-           | {:number, number}
 
   @typep lox_keyword ::
            :and
