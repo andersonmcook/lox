@@ -163,13 +163,13 @@ defmodule Lox.Scanner do
   defp tokenize([?" | rest], scanner), do: tokenize_string(rest, [], scanner)
 
   # Numbers
-  defp tokenize([char | rest] = all, scanner) when is_digit(char) do
-    tokenize_number(rest, all, 1, scanner)
+  defp tokenize([char | rest], scanner) when is_digit(char) do
+    tokenize_number(rest, [char], scanner)
   end
 
   # Identifiers
-  defp tokenize([char | rest] = all, scanner) when is_alpha(char) do
-    tokenize_identifier(rest, all, 1, scanner)
+  defp tokenize([char | rest], scanner) when is_alpha(char) do
+    tokenize_identifier(rest, [char], scanner)
   end
 
   # Unexpected characters
@@ -178,31 +178,35 @@ defmodule Lox.Scanner do
   end
 
   # Keyword and Identifier tokenizer
-  defp tokenize_identifier([char | rest], all, count, scanner) when is_alphanumeric(char) do
-    tokenize_identifier(rest, all, count + 1, scanner)
+  defp tokenize_identifier([char | rest], chars, scanner) when is_alphanumeric(char) do
+    tokenize_identifier(rest, [char | chars], scanner)
   end
 
-  defp tokenize_identifier(rest, all, count, scanner) do
-    list = Enum.slice(all, 0, count)
+  defp tokenize_identifier(rest, chars, scanner) do
+    token =
+      chars
+      |> Enum.reverse()
+      |> to_keyword_or_identifier()
 
-    tokenize(rest, add_token(scanner, to_keyword_or_identifier(list)))
+    tokenize(rest, add_token(scanner, token))
   end
 
   # Number tokenizer
-  defp tokenize_number([?., char | rest], all, count, scanner) when is_digit(char) do
-    tokenize_number(rest, all, count + 2, scanner)
+  defp tokenize_number([?., char | rest], chars, scanner) when is_digit(char) do
+    # Reverse order because we will reverse again at the end
+    tokenize_number(rest, [char, ?. | chars], scanner)
   end
 
-  defp tokenize_number([char | rest], all, count, scanner) when is_digit(char) do
-    tokenize_number(rest, all, count + 1, scanner)
+  defp tokenize_number([char | rest], chars, scanner) when is_digit(char) do
+    tokenize_number(rest, [char | chars], scanner)
   end
 
-  defp tokenize_number([?. | rest], _all, _count, scanner) do
+  defp tokenize_number([?. | rest], _chars, scanner) do
     tokenize(rest, add_error(scanner, "Floats cannot end with a decimal point"))
   end
 
-  defp tokenize_number(rest, all, count, scanner) do
-    list = Enum.slice(all, 0, count)
+  defp tokenize_number(rest, chars, scanner) do
+    list = Enum.reverse(chars)
 
     dot_count =
       Enum.reduce_while(list, 0, fn
