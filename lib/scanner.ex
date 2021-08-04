@@ -32,7 +32,7 @@ defmodule Lox.Scanner do
   @typep literal ::
            :identifier
            | {:string, String.t()}
-           | :number
+           | {:number, number}
 
   @typep lox_keyword ::
            :and
@@ -64,6 +64,8 @@ defmodule Lox.Scanner do
           tokens: [{token, pos_integer}]
         }
 
+  defguardp is_digit(char) when char in ?0..?9
+
   @doc """
   Scans a string to return tokens and errors.
   """
@@ -87,6 +89,7 @@ defmodule Lox.Scanner do
   defp add_token(scanner, token), do: Map.update!(scanner, :tokens, &[{token, scanner.line} | &1])
   defp increment_line(scanner), do: Map.update!(scanner, :line, &(&1 + 1))
 
+  # Skip comments
   defp skip([], scanner), do: scanner
   defp skip([?\n | rest], scanner), do: tokenize(rest, increment_line(scanner))
   defp skip([_ | rest], scanner), do: skip(rest, scanner)
@@ -121,6 +124,8 @@ defmodule Lox.Scanner do
     defp tokenize([unquote(char) | rest], scanner), do: tokenize(rest, scanner)
   end
 
+  # TODO: some of these repeating would be invalid syntax?
+
   # Single characters
   for {token, char} <- [
         left_paren: ?(,
@@ -129,18 +134,33 @@ defmodule Lox.Scanner do
         right_brace: ?},
         bang: ?!,
         comma: ?,,
-        dot: ?.,
         equal: ?=,
         greater: ?>,
         less: ?<,
         minus: ?-,
         plus: ?+,
         semicolon: ?;,
+        slash: ?/,
         star: ?*
       ] do
     defp tokenize([unquote(char) | rest], scanner) do
       tokenize(rest, add_token(scanner, unquote(token)))
     end
+  end
+
+  # Dot
+  defp tokenize([?., char | rest], scanner) when is_digit(char) do
+    tokenize(rest, add_error(scanner, "Floats require a leading 0"))
+  end
+
+  defp tokenize([?. | rest], scanner) do
+    tokenize(rest, add_token(scanner, :dot))
+  end
+
+  # Numbers
+
+  defp tokenize([char | rest] = all, scanner) when is_digit(char) do
+    tokenize_number(rest, all, 1, scanner)
   end
 
   # Strings
@@ -151,6 +171,40 @@ defmodule Lox.Scanner do
     tokenize(rest, add_error(scanner, "Unexpected character: #{char}"))
   end
 
+  # Number tokenizer
+  defp tokenize_number([?., char | rest], all, count, scanner) when is_digit(char) do
+    tokenize_number(rest, all, count + 2, scanner)
+  end
+
+  defp tokenize_number([char | rest], all, count, scanner) when is_digit(char) do
+    tokenize_number(rest, all, count + 1, scanner)
+  end
+
+  defp tokenize_number([?. | rest], _all, _count, scanner) do
+    tokenize(rest, add_error(scanner, "Floats cannot end with a decimal point"))
+  end
+
+  defp tokenize_number(rest, all, count, scanner) do
+    list = Enum.slice(all, 0, count)
+
+    dot_count =
+      Enum.reduce_while(list, 0, fn
+        ?., 1 -> {:halt, 2}
+        ?., acc -> {:cont, acc + 1}
+        _, acc -> {:cont, acc}
+      end)
+
+    scanner =
+      cond do
+        dot_count == 0 -> add_token(scanner, {:number, List.to_integer(list) + 0.0})
+        dot_count == 1 -> add_token(scanner, {:number, List.to_float(list)})
+        dot_count > 1 -> add_error(scanner, "Multiple decimal points in float")
+      end
+
+    tokenize(rest, scanner)
+  end
+
+  # String tokenizer
   defp tokenize_string([], _, scanner) do
     add_error(scanner, "Unterminated string.")
   end
